@@ -1,0 +1,181 @@
+---
+title: "Modification of Diet in Renal Disease"
+date: "`r Sys.Date()`"
+output:
+   html_document:
+    toc: true
+    toc_float: 
+      collapsed: false
+    df_print: paged
+    toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+# Load packages and read data
+library(tidyverse)
+mdrd <- readr::read_csv("data/mdrd.csv")
+```
+
+**Lyn Taylor**
+
+ `r Sys.Date()`
+
+
+## Background
+
+From [NIDDK](https://repository.niddk.nih.gov/studies/mdrd/):
+
+>"The Modification of Diet in Renal Disease (MDRD) study consisted of two randomized clinical trials that investigated whether protein restriction and control of blood pressure had an effect on the progression of chronic kidney disease (CKD). The study tested two hypotheses---that (1) a reduction in dietary protein and phosphorous intake and (2) the maintenance of blood pressure at a level below that usually recommended safely and effectively delays the progression of CKD."
+
+Our data is from Study 2, which included patients with relatively advanced renal disease (GFR between 13 and 24 ml/min). From [NIDDK](https://repository.niddk.nih.gov/studies/mdrd/):
+
+>"In study 2, 255 patients with GFR of 13 to 24 ml/min/1.73 m2 were randomly assigned to the low-protein diet (0.58 g per kilogram per day) or a very-low-protein diet (0.28 g per kilogram per day) with a keto acid-amino acid supplement, and a usual- or a low-blood-pressure group (same values as those in study 1). The length of follow-up varied from 18-to-45-months, with monthly evaluations of the patients. The primary outcome was the change in GFR rate over time."
+
+## Treatment groups
+
+##### The study included four treatment groups:
+* Low protein, normal blood pressure (`dietl_normbp`)
+* Low protein, low blood pressure (`dietl_lowbp`)
+* Very low protein, normal blood pressure (`dietk_normbp`)
+* Very low protein, low blood pressure (`dietk_lowbp`)
+
+
+```{r unnamed-chunk-1, echo=FALSE, warning=FALSE, message=FALSE}
+mdrd
+```
+
+## Results
+
+
+```{r unnamed-chunk-2, echo=FALSE, warning=FALSE, message=FALSE}
+mdrd_tidy <-
+  mdrd %>% 
+  pivot_longer(
+    cols = starts_with("diet"),
+    names_to = "treatment",
+    values_to = "in_group"
+  ) %>% 
+  filter(in_group == 1) %>% 
+  group_by(treatment, ptid) %>% 
+  summarize(
+    gfr_slope = (last(gfr, order_by = months) - first(gfr, order_by = months)) / max(months)
+  ) %>% 
+  filter(!is.nan(gfr_slope)) %>% 
+  ungroup()
+```
+
+We computed the change in glomerular filtration rate for each patient in the trial. 
+GFR_slope (rate) - negative indicates a reduction in GFR over time, the higher negative the larger the reduction.
+
+This variable ranged from `r mdrd_tidy$gfr_slope %>% min() %>% round(digits = 2)` to `r mdrd_tidy$gfr_slope %>% max() %>% round(digits = 2)` ml/min/1.73 m^2^.
+
+<!---
+```{r unnamed-chunk-3, echo=FALSE, warning=FALSE, error=FALSE}
+mdrd_tidy %>%  
+  ggplot(aes(x = treatment, y = gfr_slope)) + 
+  geom_boxplot() +
+  labs(
+    title = "Change in glomerular filtration rate (GFR) by treatment group",
+    x = "Treament group",
+    y = "GFR slope",
+    caption = "Source: NIDDK"
+  )
+```
+--->
+
+```{r extension1, echo=FALSE, warning=FALSE, error=FALSE, out.width="130%"}
+mdrd_tidy %>%  
+  ggplot(aes(x = treatment, y = gfr_slope)) + 
+  geom_boxplot() +
+  labs(
+    title = "Change in glomerular filtration rate (GFR) by treatment group",
+    x = "Treament group",
+    y = "GFR slope"
+  )
+```
+<div style="text-align: right"> Source: [NIDDK](https://repository.niddk.nih.gov/studies/mdrd/) </div>            
+
+
+### GFR change over time by Treatment
+
+The mean GFR slope by Treatment was:
+
+```{r extension1b, echo=FALSE, warning=FALSE, error=FALSE, out.width="130%"}
+mdrd_tidy %>%  
+  group_by(treatment) %>% 
+    summarize(mean_gfrs=mean(gfr_slope),sd_gfrs=sd(gfr_slope), median_gfrs=median(gfr_slope))
+```
+
+Initially, the means indicate that the normal blood pressure (BP) groups (for both diets) have a higher reduction in GFR on average compared to the low blood pressure groups.  However, the medians indicate a skewed distribution such that the means should not be used as a measure of location.  The medians indicate the dietl have a lower reduction in GFR compared to dietl, with high BP groups having higher reductions in GFR compared to low BP groups.  As the box plots show some outliers, lets investigate them.
+
+
+### Variability around the Mean GFR slope by Treatment
+
+Just for fun (not statistically sensible!), we explored each patients variability from the mean average GFR slope.
+```{r extension2, echo=FALSE, warning=FALSE, error=FALSE, out.width="130%"}
+mdrd_tidy %>%  
+  group_by (treatment) %>% 
+  summarize (mean_gfrs =mean(gfr_slope)) %>% 
+  left_join(mdrd_tidy, by="treatment") %>% 
+  mutate (CF_mean=gfr_slope-mean_gfrs) %>% 
+  mutate (below_avg=ifelse(CF_mean<0,"Y","N")) %>% 
+  
+  ggplot(aes(x = ptid, y = CF_mean, color=below_avg)) + 
+  geom_point() +
+  labs(
+    title = "Patients above/below average GFR slope - adjusted for trt",
+    x = "Patient ID",
+    y = "Difference from average slope" ,
+    color="Below Average?"
+  )
+```
+
+
+<!---
+```{r extension3, echo=FALSE, warning=FALSE, error=FALSE, out.width="130%"}
+mdrd_tidy %>%  
+  group_by (treatment) %>% 
+  summarize (mean_gfrs =mean(gfr_slope)) %>% 
+  left_join(mdrd_tidy, by="treatment") %>% 
+  mutate (CF_mean=gfr_slope-mean_gfrs) %>% 
+  mutate (below_avg=ifelse(CF_mean<0,"Y","N")) %>% 
+  
+  ggplot(aes(x = ptid, y = CF_mean, color=treatment, label=round(CF_mean,digits=1))) + 
+ # geom_point() +
+   geom_text() +
+  labs(
+    title = "Patients above/below average GFR slope - adjusted for trt",
+    x = "Patient ID",
+    y = "Difference from average slope" ,
+    color="Below Average?"
+  )
+```
+--->
+
+We are concerned that patient outliers may have an effect on the study results so have identified them in the graph below
+
+```{r extension4, echo=FALSE, warning=FALSE, error=FALSE, out.width="130%"}
+mdrd_tidy %>%  
+  group_by (treatment) %>% 
+  summarize (mean_gfrs =mean(gfr_slope)) %>% 
+  left_join(mdrd_tidy, by="treatment") %>% 
+  mutate (CF_mean=gfr_slope-mean_gfrs) %>% 
+  mutate (below_avg=ifelse(CF_mean<0,"Y","N")) %>% 
+  
+  ggplot(aes(x = ptid, y = CF_mean, color=treatment)) + 
+  geom_point() +
+  labs(
+    title = "Patients compared to average GFR slope - adjusted for trt",
+    x = "Patient ID",
+    y = "Difference from average slope" ,
+    color="Treatment"
+  ) +
+  annotate("text",label="PTID:89, 1.9>average", x=89, y=2.2, size=3,color="black")+
+  annotate("text",label="PTID:10, 2.1<average", x=25, y=-1.9, size=3,color="black")+
+  annotate("text",label="PTID:58, 2.2<average", x=65, y=-2.4, size=3,color="black")+
+  annotate("text",label="PTID:133, 2.2<average", x=175, y=-2.2, size=3,color="black")
+```
+
+
+<div style="text-align: right"> Source: [NIDDK](https://repository.niddk.nih.gov/studies/mdrd/)    
+<div style="text-align: left">
